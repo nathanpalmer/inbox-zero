@@ -17,6 +17,10 @@ import { toMailerAttachments } from "@/utils/types/mail";
 import type { MessageWithPayload, ParsedMessage } from "@/utils/types";
 import { parseMessage } from "@/utils/gmail/message";
 import {
+  GMAIL_UNITS_PER_MESSAGE_GET,
+  paceGmailQuota,
+} from "@/utils/gmail/quota";
+import {
   getMessage,
   getMessages,
   getSentMessages,
@@ -300,6 +304,16 @@ export class GmailProvider implements EmailProvider {
     messageId: string,
     options?: { includeCalendarContent?: boolean },
   ): Promise<ParsedMessage> {
+    // Every message read goes through here - including the parallel fan-outs in
+    // getMessagesWithPagination/searchMessages and the hydration path - so
+    // pacing this single call keeps the whole account inside its per-user quota
+    // budget. Gmail charges messages.get per unit of work, not per request, so
+    // an unpaced fan-out spends a page's worth of quota instantly and is then
+    // rejected with 403 rateLimitExceeded (see utils/gmail/quota.ts).
+    await paceGmailQuota(
+      this.emailAccountId ?? "gmail-default",
+      GMAIL_UNITS_PER_MESSAGE_GET,
+    );
     const message = await getMessage(messageId, this.client, "full");
     return parseMessage(message, options);
   }
