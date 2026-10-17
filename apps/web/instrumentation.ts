@@ -1,6 +1,9 @@
 /* eslint-disable no-process-env */
 import * as Sentry from "@sentry/nextjs";
 import { beforeSend, beforeSendTransaction } from "@/utils/sentry-scrub";
+import { createScopedLogger } from "@/utils/logger";
+
+const logger = createScopedLogger("instrumentation");
 
 export function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
@@ -17,6 +20,18 @@ export function register() {
       // uncomment the line below to enable Spotlight (https://spotlightjs.com)
       // spotlight: process.env.NODE_ENV === 'development',
     });
+
+    // Re-arm queue-driven mailbox backfills. A restart drops the tick chain, and
+    // the nightly rsync backup restarts this service, so recovery must not wait
+    // for the slower cron backstop. Fire-and-forget: startup must not block on
+    // the database or Redis, and any failure is logged and covered by cron.
+    if (process.env.NEXT_PHASE !== "phase-production-build") {
+      import("@/utils/mail/backfill-boot")
+        .then(({ resumeRunningBackfills }) => resumeRunningBackfills())
+        .catch((error) => {
+          logger.error("Failed to re-arm backfills", { error });
+        });
+    }
   }
 
   // This is your Sentry.init call from `sentry.edge.config.js|ts`
