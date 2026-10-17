@@ -232,6 +232,7 @@ model EmailAccount {
   cleanupJobs         CleanupJob[]
   cleanupThreads      CleanupThread[]
   emailMessages       EmailMessage[]
+  backfillRuns        BackfillRun[]
   emailTokens         EmailToken[]
   knowledge           Knowledge[]
   snippets            Snippet[]
@@ -1195,6 +1196,38 @@ model EmailMessage {
   @@index([emailAccountId, date])
   @@index([emailAccountId, from])
   @@index([emailAccountId, fromName])
+}
+
+enum BackfillRunStatus {
+  QUEUED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+// Server-side driver for the EmailMessage backfill. The crawl cursor is NOT
+// stored here: loadEmails() derives it from the oldest/newest EmailMessage.date
+// for the account, which is what makes the backfill resumable across restarts.
+// This row exists for control (pause/cancel), progress reporting, and the
+// one-active-run guard.
+model BackfillRun {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  emailAccountId String
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+
+  status              BackfillRunStatus @default(QUEUED)
+  processed           Int              @default(0)
+  consecutiveFailures Int              @default(0)
+  hasMoreAfter        Boolean          @default(true)
+  hasMoreBefore       Boolean          @default(true)
+  lastError           String?
+  completedAt         DateTime?
+
+  @@index([emailAccountId, status])
 }
 
 model ResponseTime {

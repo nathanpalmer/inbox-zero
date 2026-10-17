@@ -9,6 +9,9 @@ const DEFAULT_QUEUES = [
   { name: "email-summary-all", concurrency: 3 },
   { name: "email-digest-all", concurrency: 3 },
   { name: "email-inbox-health-all", concurrency: 3 },
+  // One at a time: ticks advance a single derived cursor, so concurrent ticks
+  // would race over the same pages.
+  { name: "mail-backfill", concurrency: 1 },
 ];
 
 export async function startWorkerRuntime({

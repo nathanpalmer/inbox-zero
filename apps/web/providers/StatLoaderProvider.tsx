@@ -84,24 +84,44 @@ export function StatLoaderProvider(props: { children: React.ReactNode }) {
     [emailAccountId],
   );
 
+  // The backfill runs server-side now: a queue job drives it, so it survives
+  // closing the tab, deploys, and the nightly service restart. The browser only
+  // starts and pauses it.
   const onLoadBatch = useCallback(
     async (options: { loadBefore: boolean; showToast: boolean }) => {
-      const batchSize = 50;
-      for (let i = 0; i < batchSize; i++) {
-        if (stopLoading) break;
-        console.log("Loading batch", i);
-        await onLoad({
-          ...options,
-          showToast: options.showToast && i === batchSize - 1,
+      setIsLoading(true);
+
+      try {
+        const res = await fetch("/api/mail/backfill", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "start" }),
         });
+
+        if (options.showToast) {
+          if (res.ok) {
+            toastSuccess({
+              description:
+                "Backfill started — it will keep running on the server.",
+            });
+          } else {
+            toastError({ description: "Could not start the backfill." });
+          }
+        }
+      } finally {
+        setIsLoading(false);
+        setStopLoading(false);
       }
-      setStopLoading(false);
     },
-    [onLoad, stopLoading],
+    [],
   );
 
-  const onCancelLoadBatch = useCallback(() => {
-    setStopLoading(true);
+  const onCancelLoadBatch = useCallback(async () => {
+    await fetch("/api/mail/backfill", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "pause" }),
+    });
   }, []);
 
   return (
