@@ -576,6 +576,14 @@ export function createGenerateObject({
         }),
         providerOptions,
         model: candidate.model,
+        // DeepSeek (and other OpenAI-compatible providers) reject json_schema
+        // structured output with 400 "This response_format type is unavailable
+        // now", which broke every message processed by the webhook. They do
+        // support json_object, which `mode: "json"` uses: the schema is put in
+        // the prompt and the reply is parsed and validated client-side.
+        ...(candidate.provider === "openai-compatible"
+          ? { mode: "json" as const }
+          : {}),
         ...(cacheOverrides ?? {}),
       } as unknown as Parameters<
         typeof generateObject<SCHEMA, OUTPUT, RESULT>
